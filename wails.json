@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "fxrepo-tester",
+  "outputfilename": "fxrepo-tester",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "psycomentis06",
+    "email": "alibenamor30@gmail.com"
+  }
+}
