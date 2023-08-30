@@ -4,7 +4,9 @@ import (
 	"context"
 	"fxrepo_tester/src"
 	"log"
+	"math"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -54,33 +56,61 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) LoadFile(nrows int) (img []src.Image,err error) {
 	path, _ := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{})
   imgs, lErr := src.ParseImageCsvFile(path, nrows)
-  runtime.EventsEmit(a.ctx, "cache-start")
-  go func(){ a.cacheImages(imgs) }()
+  a.cacheImages(&imgs)
   return imgs, lErr
 }
 
-func (a *App) cacheImages(imgs []src.Image) {
+func (a *App) cacheImages(imgs *[]src.Image) {
+  runtime.EventsEmit(a.ctx, "cache-start")
   homeDir, homeDirErr := os.UserHomeDir()
   if homeDirErr != nil {
     panic("Home dir Error: " + homeDirErr.Error())
   }
-  for _, v := range imgs {
-    eventData := make(map[string]interface{})
+  const chunkSize = 10
+  ch := make(chan src.Image, len(*imgs))
+  var wg sync.WaitGroup
+  chunksArraySize := int(math.Round(float64(len(*imgs)) / float64(chunkSize)))
+  page := 1
+  for i := 0; i < chunksArraySize; i++ {
+    var imgsSlice []src.Image 
+    if (i <= 0) {
+      imgsSlice = (*imgs)[:chunkSize]
+    } else {
+      if chunksArraySize - 1 == i && len(*imgs) % chunkSize != 0 {
+        imgsSlice = (*imgs)[page*chunkSize - chunkSize:]
+      } else {
+        imgsSlice = (*imgs)[page*chunkSize - chunkSize: chunkSize * page]
+      }
+    }
+    go func(){
+      wg.Add(1)
+      defer wg.Done()
+      a.cacheImage(&imgsSlice, ch, homeDir, len(*imgs))
+    }()
+  }
+  wg.Wait()
+  runtime.EventsEmit(a.ctx, "cache-end")
+}
+
+func (a *App) cacheImage(imgs *[]src.Image, ch chan src.Image, homeDir string, totalImages int) {
+  for _, v := range *imgs {
+    eventData := make(map[string]interface{}, 2)
     eventData["image"] = v
-    eventData["totalImages"] = len(imgs)
+    eventData["totalImages"] = totalImages
     runtime.EventsEmit(a.ctx, "cache-event", eventData)
     isSaved, httpEr, statusCode := v.Save(homeDir + "/" + APP_DIR_PATH)
     if httpEr != nil {
       if (statusCode == 429) {
         log.Println("Rate limit exceeded")
-        break
+        return
       }
     }
-    if !isSaved {
+    if isSaved {
+      ch <- v
       time.Sleep(time.Duration(500) * time.Millisecond)
     }
+    // v.ImageUrl = homeDir + "/" + APP_DIR_PATH + "/images/" + v.ImageUrl
   }
-  runtime.EventsEmit(a.ctx, "cache-end")
 }
 
 func (a *App) LoadFileAsync(nrows int) {
