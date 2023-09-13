@@ -2,13 +2,15 @@ package src
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
+	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"strings"
-  "log"
 )
 
 const (
@@ -135,7 +137,7 @@ func (i* Image) Save(dir string) (bool, error, int) {
       log.Printf("Create file %s \n", i.Id)
       _, copyErr := io.Copy(file, resp.Body)
       if copyErr != nil {
-        fmt.Println("Copy file Error: " + copyErr.Error())
+        log.Println("Copy file Error: " + copyErr.Error())
       } else {
         log.Printf("Copying image to %s \n", imagePath)
         return true, nil, resp.StatusCode
@@ -144,4 +146,56 @@ func (i* Image) Save(dir string) (bool, error, int) {
   } 
   log.Println("Image is already saved skip creation")
   return false, nil, -1
+}
+
+func (i *Image) PostToApi(endpoint string) {
+  file, openErr := os.ReadFile(i.ImageUrl)
+  if openErr != nil {
+    log.Println(openErr.Error())
+  }
+  bodyBuff := new(bytes.Buffer)
+  writer := multipart.NewWriter(bodyBuff)
+  partFile , partFileErr := writer.CreateFormFile("file", i.Id)
+  if partFileErr != nil {
+    log.Println("Part error")
+  }
+  _, partErr := partFile.Write(file)
+  if partErr != nil {
+    log.Println(partErr.Error())
+  }
+  writerCloseErr := writer.Close()
+  if writerCloseErr != nil {
+    log.Println(writerCloseErr)
+  }
+
+
+  request, reqError := http.NewRequest("POST", endpoint, bodyBuff)
+  if reqError != nil {
+    log.Println(reqError.Error())
+  }
+  request.Header.Add("Content-Type", writer.FormDataContentType())
+
+  client := &http.Client{}
+  res, resErr := client.Do(request)
+  if resErr != nil {
+    log.Println(resErr)
+  }
+  defer res.Body.Close()
+
+  var resData map[string]interface{}
+  json.NewDecoder(res.Body).Decode(&resData)
+  log.Println(resData)
+
+
+ //  imageFileValues := url.Values{
+ //    "file": {i.ImageUrl},
+ //  }
+ //  res, httpErr := http.PostForm(endpoint, imageFileValues)
+ //  if httpErr != nil {
+ //    log.Println(httpErr.Error())
+ //  }
+ //  defer res.Body.Close()
+ // var resData map[string]interface{} 
+ // json.NewDecoder(res.Body).Decode(&resData)
+ // log.Println(resData)
 }
