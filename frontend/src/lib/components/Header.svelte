@@ -14,7 +14,7 @@
 
   const openFile = (e: MouseEvent) => {
     loadingFileIndicator.set(true)
-    LoadFile(30).then(v => {
+    LoadFile(200).then(v => {
       imagesArrayData.set(v)
       console.log(v)
     })
@@ -39,6 +39,9 @@
 </script>
 <div class="navbar">
   <div class="navbar-start">
+    {#if $imagesArrayData.length > 0}
+      <button class="btn btn-primary">Batch send ({$imagesArrayData.length})</button>
+    {/if}
   </div>
   <div class="navbar-center">
     <button on:click={openFile} class="btn flex items-center w-[220px]" style="gap: 10px;">
