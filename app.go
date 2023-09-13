@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -68,7 +67,7 @@ func (a *App) cacheImages(imgs *[]src.Image) {
   }
   const chunkSize = 10
   ch := make(chan src.Image, len(*imgs))
-  var wg sync.WaitGroup
+  var mainWg, workerWg sync.WaitGroup
   chunksArraySize := int(math.Round(float64(len(*imgs)) / float64(chunkSize)))
   page := 1
   for i := 0; i < chunksArraySize; i++ {
@@ -82,34 +81,43 @@ func (a *App) cacheImages(imgs *[]src.Image) {
         imgsSlice = (*imgs)[page*chunkSize - chunkSize: chunkSize * page]
       }
     }
+    workerWg.Add(1)
     go func(){
-      wg.Add(1)
-      defer wg.Done()
+      defer workerWg.Done()
       a.cacheImage(&imgsSlice, ch, homeDir, len(*imgs))
     }()
+    page++
   }
-  wg.Wait()
+  go func() {
+    workerWg.Wait()
+    close(ch)
+  }()
+
+  mainWg.Add(1)
+  go func() {
+    defer mainWg.Done()
+    for range ch {}
+  }()
+
+  mainWg.Wait()
   runtime.EventsEmit(a.ctx, "cache-end")
 }
 
 func (a *App) cacheImage(imgs *[]src.Image, ch chan src.Image, homeDir string, totalImages int) {
-  for _, v := range *imgs {
+  for index, v := range *imgs {
     eventData := make(map[string]interface{}, 2)
     eventData["image"] = v
     eventData["totalImages"] = totalImages
     runtime.EventsEmit(a.ctx, "cache-event", eventData)
-    isSaved, httpEr, statusCode := v.Save(homeDir + "/" + APP_DIR_PATH)
+    _ , httpEr, statusCode := v.Save(homeDir + APP_DIR_PATH)
     if httpEr != nil {
       if (statusCode == 429) {
         log.Println("Rate limit exceeded")
         return
       }
     }
-    if isSaved {
-      ch <- v
-      time.Sleep(time.Duration(500) * time.Millisecond)
-    }
-    // v.ImageUrl = homeDir + "/" + APP_DIR_PATH + "/images/" + v.ImageUrl
+    (*imgs)[index].ImageUrl = homeDir + "/" + APP_DIR_PATH + "/images/" + v.ImageUrl
+    ch <- v
   }
 }
 
