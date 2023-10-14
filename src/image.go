@@ -20,8 +20,6 @@ const (
 	COLUMN_NAME_IMAGE_CATEGORY    = "category"
 	COLUMN_NAME_IMAGE_TAGS        = "tags"
 	COLUMN_NAME_IMAGE_URL         = "image_url"
-
-  IMAGES_DIR_NAME = "images"
 )
 
 type Image struct {
@@ -31,6 +29,16 @@ type Image struct {
 	Description string   `json:"description"`
 	Category    []string `json:"category"`
 	Tags        []string `json:"tags"`
+}
+
+type ImageSaveError struct {
+	Message     string `json:"message"`
+	OriginalErr error  `json:"error"`
+	StatusCode  int    `json:"status_code"`
+}
+
+func (e *ImageSaveError) Error() string {
+	return e.Message
 }
 
 func ParseImageCsvFile(path string, nrows int) (image []Image, err error) {
@@ -98,9 +106,9 @@ func ParseImageCsvFile(path string, nrows int) (image []Image, err error) {
 				ImageUrl:    imgUrl,
 			}
 			imageArray = append(imageArray, img)
-      if nrows > 0 && i == nrows {
-        break
-      }
+			if nrows > 0 && i == nrows {
+				break
+			}
 		}
 	}
 	return imageArray, nil
@@ -115,87 +123,103 @@ func getColIndex(name string, colNames []string) (index int, err error) {
 	return -1, errors.New("Column " + name + " not found in given array")
 }
 
+func (i *Image) Save() *ImageSaveError {
+	imagePath := GetImageCacheDir() + "/" + i.Id
+	if _, openErr := os.Stat(imagePath); openErr == nil {
+		return nil
+	}
+	if !strings.HasPrefix(i.ImageUrl, "http") {
+		return &ImageSaveError{
+			Message:     "Invalid URL format",
+			OriginalErr: nil,
+			StatusCode:  -1,
+		}
+	}
 
-func (i* Image) Save(dir string) (bool, error, int) {
-  imagePath := dir + "/" + IMAGES_DIR_NAME + "/" + i.Id
-  _, openErr := os.Open(imagePath)
-  if openErr != nil {
-    log.Printf("Image %s not found locally. Trying to retrieve it\n", i.Id)
-    if (strings.HasPrefix(i.ImageUrl, "http")) {
-      resp, httpErr := http.Get(i.ImageUrl)
-      if httpErr != nil {
-        log.Println("HTTP Error : " + httpErr.Error())
-        return false, httpErr, resp.StatusCode
-      }
-      defer resp.Body.Close()
-      log.Printf("Downloading file from %s success\n", i.ImageUrl)
-      file, fileErr := os.Create(imagePath)
-      if fileErr != nil {
-        log.Println("Create file Error: " + fileErr.Error())
-      }
-      defer file.Close()
-      log.Printf("Create file %s \n", i.Id)
-      _, copyErr := io.Copy(file, resp.Body)
-      if copyErr != nil {
-        log.Println("Copy file Error: " + copyErr.Error())
-      } else {
-        log.Printf("Copying image to %s \n", imagePath)
-        return true, nil, resp.StatusCode
-      }
-    }
-  } 
-  log.Println("Image is already saved skip creation")
-  return false, nil, -1
+	resp, err := http.Get(i.ImageUrl)
+	if err != nil {
+		return &ImageSaveError{
+			Message:     "HTTP Error",
+			OriginalErr: err,
+			StatusCode:  -1,
+		}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return &ImageSaveError{
+			Message:     "HTTP Request Failed",
+			OriginalErr: nil,
+			StatusCode:  resp.StatusCode,
+		}
+	}
+
+	file, err := os.Create(imagePath)
+	if err != nil {
+		return &ImageSaveError{
+			Message:     "Create file Error",
+			OriginalErr: err,
+			StatusCode:  -1,
+		}
+	}
+	defer file.Close()
+
+	if _, err := io.Copy(file, resp.Body); err != nil {
+		return &ImageSaveError{
+			Message:     "Copy file Error",
+			OriginalErr: err,
+			StatusCode:  -1,
+		}
+	}
+	return nil
 }
 
 func (i *Image) PostToApi(endpoint string) {
-  file, openErr := os.ReadFile(i.ImageUrl)
-  if openErr != nil {
-    log.Println(openErr.Error())
-  }
-  bodyBuff := new(bytes.Buffer)
-  writer := multipart.NewWriter(bodyBuff)
-  partFile , partFileErr := writer.CreateFormFile("file", i.Id)
-  if partFileErr != nil {
-    log.Println("Part error")
-  }
-  _, partErr := partFile.Write(file)
-  if partErr != nil {
-    log.Println(partErr.Error())
-  }
-  writerCloseErr := writer.Close()
-  if writerCloseErr != nil {
-    log.Println(writerCloseErr)
-  }
+	file, openErr := os.ReadFile(i.ImageUrl)
+	if openErr != nil {
+		log.Println(openErr.Error())
+	}
+	bodyBuff := new(bytes.Buffer)
+	writer := multipart.NewWriter(bodyBuff)
+	partFile, partFileErr := writer.CreateFormFile("file", i.Id)
+	if partFileErr != nil {
+		log.Println("Part error")
+	}
+	_, partErr := partFile.Write(file)
+	if partErr != nil {
+		log.Println(partErr.Error())
+	}
+	writerCloseErr := writer.Close()
+	if writerCloseErr != nil {
+		log.Println(writerCloseErr)
+	}
 
+	request, reqError := http.NewRequest("POST", endpoint, bodyBuff)
+	if reqError != nil {
+		log.Println(reqError.Error())
+	}
+	request.Header.Add("Content-Type", writer.FormDataContentType())
 
-  request, reqError := http.NewRequest("POST", endpoint, bodyBuff)
-  if reqError != nil {
-    log.Println(reqError.Error())
-  }
-  request.Header.Add("Content-Type", writer.FormDataContentType())
+	client := &http.Client{}
+	res, resErr := client.Do(request)
+	if resErr != nil {
+		log.Println(resErr)
+	}
+	defer res.Body.Close()
 
-  client := &http.Client{}
-  res, resErr := client.Do(request)
-  if resErr != nil {
-    log.Println(resErr)
-  }
-  defer res.Body.Close()
+	var resData map[string]interface{}
+	json.NewDecoder(res.Body).Decode(&resData)
+	log.Println(resData)
 
-  var resData map[string]interface{}
-  json.NewDecoder(res.Body).Decode(&resData)
-  log.Println(resData)
-
-
- //  imageFileValues := url.Values{
- //    "file": {i.ImageUrl},
- //  }
- //  res, httpErr := http.PostForm(endpoint, imageFileValues)
- //  if httpErr != nil {
- //    log.Println(httpErr.Error())
- //  }
- //  defer res.Body.Close()
- // var resData map[string]interface{} 
- // json.NewDecoder(res.Body).Decode(&resData)
- // log.Println(resData)
+	//  imageFileValues := url.Values{
+	//    "file": {i.ImageUrl},
+	//  }
+	//  res, httpErr := http.PostForm(endpoint, imageFileValues)
+	//  if httpErr != nil {
+	//    log.Println(httpErr.Error())
+	//  }
+	//  defer res.Body.Close()
+	// var resData map[string]interface{}
+	// json.NewDecoder(res.Body).Decode(&resData)
+	// log.Println(resData)
 }

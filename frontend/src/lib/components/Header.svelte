@@ -1,5 +1,5 @@
 <script lang="ts">
-  import {showSettingsModal} from '../stores/settings'
+  import {showSettingsModal,pageLinesLimit} from '../stores/settings'
   import {imagesArrayData} from '../stores/images'
   import { LoadFile, LoadFileAsync } from '../../../wailsjs/go/main/App'
   import { loadingFileIndicator } from '../stores/indicators'
@@ -14,7 +14,9 @@
 
   const openFile = (e: MouseEvent) => {
     loadingFileIndicator.set(true)
-    LoadFile(200).then(v => {
+    let linesToLoad = Number($pageLinesLimit)
+    linesToLoad = linesToLoad >= 10 ? linesToLoad : (linesToLoad < 10 && linesToLoad > 0 ? 20 : 999999999)
+    LoadFile(linesToLoad).then(v => {
       imagesArrayData.set(v)
       console.log(v)
     })
@@ -40,7 +42,7 @@
 <div class="navbar">
   <div class="navbar-start">
     {#if $imagesArrayData.length > 0}
-      <button class="btn btn-primary">Batch send ({$imagesArrayData.length})</button>
+      <button class="btn btn-primary">Batch send ({$pageLinesLimit})</button>
     {/if}
   </div>
   <div class="navbar-center">

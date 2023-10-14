@@ -5,3 +5,5 @@ import {src} from '../models';
 export function LoadFile(arg1:number):Promise<Array<src.Image>>;
 
 export function LoadFileAsync(arg1:number):Promise<void>;
+
+export function OpenImage(arg1:string):Promise<void>;

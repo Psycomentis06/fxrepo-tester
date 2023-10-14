@@ -4,16 +4,15 @@ import (
 	"context"
 	"fxrepo_tester/src"
 	"log"
-	"math"
 	"os"
+	"os/exec"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const (
-  APP_DIR_PATH = "/.local/share/fxrepo_tester"
-)
+var cachedImagesCounter int
+var cachedImagesMutex sync.Mutex
 
 // App struct
 type App struct {
@@ -21,8 +20,8 @@ type App struct {
 }
 
 type LoadFileReturn struct {
-  Images []src.Image
-  Err error
+	Images []src.Image
+	Err    error
 }
 
 // NewApp creates a new App application struct
@@ -30,101 +29,115 @@ func NewApp() *App {
 	return &App{}
 }
 
-
 func initAppDir() {
-  e := os.Getenv("HOME")
-  if len(e) > 0 {
-    dirPath := e + APP_DIR_PATH + "/" + src.IMAGES_DIR_NAME
-    _, err := os.Stat(dirPath)
-    if err != nil && os.IsNotExist(err) {
-      mkdirErr := os.MkdirAll(dirPath, os.ModePerm)
-      if mkdirErr != nil {
-        panic(mkdirErr)
-      }
-    }
-  }
+	src.GetAppDirPath()
+	src.GetCacheDir()
+	src.GetImageCacheDir()
 }
 
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-  initAppDir()
+	initAppDir()
 }
 
-func (a *App) LoadFile(nrows int) (img []src.Image,err error) {
+func (a *App) LoadFile(nrows int) (img []src.Image, err error) {
 	path, _ := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{})
-  imgs, lErr := src.ParseImageCsvFile(path, nrows)
-  a.cacheImages(&imgs)
-  return imgs, lErr
+	imgs, lErr := src.ParseImageCsvFile(path, nrows)
+	a.cacheImages(&imgs)
+	return imgs, lErr
 }
+
+// func (a *App) cacheFileMetadata(path) {
+//
+// }
 
 func (a *App) cacheImages(imgs *[]src.Image) {
-  runtime.EventsEmit(a.ctx, "cache-start")
-  homeDir, homeDirErr := os.UserHomeDir()
-  if homeDirErr != nil {
-    panic("Home dir Error: " + homeDirErr.Error())
-  }
-  const chunkSize = 10
-  ch := make(chan src.Image, len(*imgs))
-  var mainWg, workerWg sync.WaitGroup
-  chunksArraySize := int(math.Round(float64(len(*imgs)) / float64(chunkSize)))
-  page := 1
-  for i := 0; i < chunksArraySize; i++ {
-    var imgsSlice []src.Image 
-    if (i <= 0) {
-      imgsSlice = (*imgs)[:chunkSize]
-    } else {
-      if chunksArraySize - 1 == i && len(*imgs) % chunkSize != 0 {
-        imgsSlice = (*imgs)[page*chunkSize - chunkSize:]
-      } else {
-        imgsSlice = (*imgs)[page*chunkSize - chunkSize: chunkSize * page]
-      }
-    }
-    workerWg.Add(1)
-    go func(){
-      defer workerWg.Done()
-      a.cacheImage(&imgsSlice, ch, homeDir, len(*imgs))
-    }()
-    page++
-  }
-  go func() {
-    workerWg.Wait()
-    close(ch)
-  }()
+	runtime.EventsEmit(a.ctx, "cache-start")
+	const chunkSize = 10
+	ch := make(chan src.Image, len(*imgs))
+	var mainWg, workerWg sync.WaitGroup
+	numImages := len(*imgs)
+	chunksArraySize := (numImages + chunkSize - 1) / chunkSize
 
-  mainWg.Add(1)
-  go func() {
-    defer mainWg.Done()
-    for range ch {}
-  }()
+	for i := 0; i < chunksArraySize; i++ {
+		start := i * chunkSize
+		end := (i + 1) * chunkSize
+		if end > numImages {
+			end = numImages
+		}
 
-  mainWg.Wait()
-  runtime.EventsEmit(a.ctx, "cache-end")
+		imgsSlice := (*imgs)[start:end]
+
+		workerWg.Add(1)
+		go func() {
+			defer workerWg.Done()
+			a.cacheImage(&imgsSlice, ch, numImages)
+		}()
+	}
+
+	go func() {
+		workerWg.Wait()
+		close(ch)
+	}()
+
+	mainWg.Add(1)
+	go func() {
+		defer mainWg.Done()
+		for range ch {
+		}
+	}()
+
+	mainWg.Wait()
+	runtime.EventsEmit(a.ctx, "cache-end")
 }
 
-func (a *App) cacheImage(imgs *[]src.Image, ch chan src.Image, homeDir string, totalImages int) {
-  for index, v := range *imgs {
-    eventData := make(map[string]interface{}, 2)
-    eventData["image"] = v
-    eventData["totalImages"] = totalImages
-    runtime.EventsEmit(a.ctx, "cache-event", eventData)
-    _ , httpEr, statusCode := v.Save(homeDir + APP_DIR_PATH)
-    if httpEr != nil {
-      if (statusCode == 429) {
-        log.Println("Rate limit exceeded")
-        return
-      }
-    }
-    (*imgs)[index].ImageUrl = homeDir + "/" + APP_DIR_PATH + "/images/" + v.ImageUrl
-    ch <- v
-  }
+func (a *App) cacheImage(imgs *[]src.Image, ch chan src.Image, totalImages int) {
+	for index, v := range *imgs {
+		cachedImagesMutex.Lock()
+		cachedImagesCounter++
+		cachedImagesMutex.Unlock()
+		eventData := make(map[string]interface{}, 2)
+		eventData["cachedImages"] = cachedImagesCounter
+		eventData["image"] = v
+		eventData["totalImages"] = totalImages
+		runtime.EventsEmit(a.ctx, "cache-event", eventData)
+		imgSaveErr := v.Save()
+		if imgSaveErr != nil {
+			if imgSaveErr.StatusCode == 429 {
+				log.Println("Rate limit exceeded")
+				return
+			}
+			if imgSaveErr.OriginalErr != nil {
+				filePath := src.GetAppDirPath() + "/" + v.Id
+				rmFileErr := os.Remove(filePath)
+				if rmFileErr == nil {
+					log.Println("Remove corrupted image: ", v.Id)
+				}
+				return
+			}
+		} else {
+			(*imgs)[index].ImageUrl = src.GetImageCacheDir() + "/" + v.Id
+			log.Println("Cached image: ", v.Id)
+		}
+		ch <- v
+	}
 }
 
 func (a *App) LoadFileAsync(nrows int) {
-  runtime.EventsEmit(a.ctx, "load-file-start")
-  go func() {
-    obj, e := a.LoadFile(nrows)
-    runtime.EventsEmit(a.ctx, "load-file-end", LoadFileReturn{Images: obj, Err: e})
-  }()
+	runtime.EventsEmit(a.ctx, "load-file-start")
+	go func() {
+		obj, e := a.LoadFile(nrows)
+		runtime.EventsEmit(a.ctx, "load-file-end", LoadFileReturn{Images: obj, Err: e})
+	}()
+}
+
+func (a *App) OpenImage(path string) {
+	// Supports only gwenview
+	cmd := exec.Command("gwenview", "-f", path)
+	_, cmdErr := cmd.Output()
+	if cmdErr != nil {
+		log.Println("Failed to open image.")
+	}
 }

@@ -3,6 +3,7 @@
   import {imagesArrayData} from '../../lib/stores/images'
   import ImageDetailsModal from '../components/Modal.svelte';
   import type {Image} from '../../../wailsjs/go/models'
+  import { OpenImage } from "../../../wailsjs/go/main/App"
 
 
   let imagesActivePage = 0
@@ -83,7 +84,11 @@
               <td>{i.id}</td>
               <td>{i.title}</td>
               <td>{i.description}</td>
-              <td>{i.image_url}</td>
+              <td>
+                <button class="link link-underline" on:click={() => OpenImage(i.image_url)}>
+                  {i.image_url}
+                </button>
+              </td>
               <td>{i.tags[0]}</td>
               <td>{i.category[0]}</td>
             </tr>
@@ -120,10 +125,10 @@
     </div>
   </div>
 
-  {#if $imageDetailsModalState}
-    <ImageDetailsModal title={imageDetailsSelected.title} show={imageDetailsModalState}>
-      Body
-    </ImageDetailsModal>
-  {/if}
+  <!-- {#if $imageDetailsModalState} -->
+  <!--   <ImageDetailsModal title={imageDetailsSelected.title} show={imageDetailsModalState}> -->
+  <!--     Body -->
+  <!--   </ImageDetailsModal> -->
+  <!-- {/if} -->
 {/if}
 

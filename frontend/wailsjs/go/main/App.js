@@ -9,3 +9,7 @@ export function LoadFile(arg1) {
 export function LoadFileAsync(arg1) {
   return window['go']['main']['App']['LoadFileAsync'](arg1);
 }
+
+export function OpenImage(arg1) {
+  return window['go']['main']['App']['OpenImage'](arg1);
+}
