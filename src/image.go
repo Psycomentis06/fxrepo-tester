@@ -155,7 +155,41 @@ func (i *Image) Save() *ImageSaveError {
 	return nil
 }
 
-func (i *Image) CreateImageFile(endpoint string) (ImageFile, error) {
+func CreateImagePost(c *http.Client, endpoint string, bodyData ImagePostCreateModel) (ImagePost, error) {
+	imagePostJson, jsonErr := json.Marshal(bodyData)
+	if jsonErr != nil {
+		return ImagePost{}, jsonErr
+	}
+	body := bytes.NewBuffer(imagePostJson)
+	request, requestError := http.NewRequest("POST", endpoint, body)
+	if requestError != nil {
+		return ImagePost{}, requestError
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Content-Encoding", "gzip")
+	res, resErr := c.Do(request)
+	if resErr != nil {
+		return ImagePost{}, resErr
+	}
+	defer res.Body.Close()
+	if status := res.StatusCode; status != http.StatusCreated {
+		var resErr HttpResponseError
+		err := json.NewDecoder(res.Body).Decode(&resErr)
+		if err != nil {
+			return ImagePost{}, err
+		}
+		return ImagePost{}, errors.New(resErr.Message)
+	}
+	var resData HttpResponse[ImagePost]
+	err := json.NewDecoder(res.Body).Decode(&resData)
+	if err != nil {
+		return ImagePost{}, err
+	}
+	return resData.Data, nil
+}
+
+func (i *Image) CreateImageFile(c *http.Client, endpoint string) (ImageFile, error) {
 	file, openErr := os.ReadFile(i.ImageUrl)
 	if openErr != nil {
 		return ImageFile{}, openErr
@@ -181,8 +215,7 @@ func (i *Image) CreateImageFile(endpoint string) (ImageFile, error) {
 	}
 	request.Header.Add("Content-Type", writer.FormDataContentType())
 
-	client := &http.Client{}
-	res, resErr := client.Do(request)
+	res, resErr := c.Do(request)
 	if resErr != nil {
 		return ImageFile{}, resErr
 	}
@@ -199,4 +232,62 @@ func (i *Image) CreateImageFile(endpoint string) (ImageFile, error) {
 	default:
 		return ImageFile{}, errors.New("unhandled HTTP Status Code:  " + strconv.Itoa(res.StatusCode))
 	}
+}
+
+func (i *Image) SaveToService(c *http.Client, endpoints *Endpoints) (ImagePost, error) {
+	// Check categories and create them if they don't exist
+	for _, cat := range i.Category {
+		categoryEndpoint := endpoints.GetCategoryEndpoint + cat
+		_, err := GetCategory(c, categoryEndpoint)
+		if err != nil {
+			categoryObj := Category{Name: cat, Description: ""}
+			_, err := CreateCategory(c, endpoints.CreateCategoryEndpoint, categoryObj)
+			if err != nil {
+			}
+		}
+	}
+	// Create ImageFile
+	imageFile, err := i.CreateImageFile(c, endpoints.CreateImageFileEndpoint)
+	if err != nil {
+		return ImagePost{}, err
+	}
+	// Create ImagePost
+	tags := make([]Tag, len(i.Tags))
+	for _, tag := range i.Tags {
+		tags = append(tags, Tag{Name: tag})
+	}
+	if len(i.Title) == 0 {
+		if len(i.Description) == 0 {
+			i.Title = "Untitled"
+		} else {
+			i.Title = i.Description
+		}
+	}
+	if len(i.Description) == 0 {
+		if len(i.Title) == 0 {
+			i.Description = "No description"
+		} else {
+			i.Description = i.Title
+		}
+	}
+	var categoryName string
+	if len(i.Category) == 0 {
+		categoryName = "default"
+	} else {
+		categoryName = i.Category[0]
+	}
+	imagePost := ImagePostCreateModel{
+		Title:    i.Title,
+		Content:  i.Description,
+		Public:   true,
+		Nsfw:     false,
+		Tags:     tags,
+		Image:    imageFile.Id,
+		Category: categoryName,
+	}
+	post, err := CreateImagePost(c, endpoints.CreateImagePostEndpoint, imagePost)
+	if err != nil {
+		return ImagePost{}, err
+	}
+	return post, nil
 }

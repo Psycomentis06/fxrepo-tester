@@ -1,5 +1,11 @@
 package src
 
+type Endpoints struct {
+	CreateImageFileEndpoint string
+	CreateImagePostEndpoint string
+	CreateCategoryEndpoint  string
+	GetCategoryEndpoint     string
+}
 type HttpResponse[T any] struct {
 	Message string `json:"message"`
 	Code    int    `json:"code"`
@@ -68,6 +74,16 @@ type ImagePost struct {
 	Image       ImageFile `json:"image"`
 	Category    Category  `json:"category"`
 	Tags        []Tag     `json:"tags"`
+}
+
+type ImagePostCreateModel struct {
+	Title    string `json:"title"`
+	Content  string `json:"content"`
+	Public   bool   `json:"public"`
+	Nsfw     bool   `json:"nsfw"`
+	Tags     []Tag  `json:"tags"`
+	Image    string `json:"image"`
+	Category string `json:"category"`
 }
 type ImageSaveError struct {
 	Message     string `json:"message"`
