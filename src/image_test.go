@@ -21,12 +21,17 @@ func TestSaveImage(t *testing.T) {
 	a[3].Save()
 }
 
-// func TestPostImage(t *testing.T) {
-//   img := Image{
-//     Id: "id",
-//     Title: "title",
-//     Description: "desc",
-//     ImageUrl: "/home/psycomentis06/.local/share/fxrepo_tester/images/_gycpm2K900",
-//   }
-//   img.PostToApi("http://localhost:9057/api/v1/file/image/new")
-// }
+func TestCreateImageFile(t *testing.T) {
+	img := Image{
+		Id:          "id",
+		Title:       "title",
+		Description: "desc",
+		ImageUrl:    "/home/psycomentis06/.local/share/fxrepo_tester/images/_gycpm2K900",
+	}
+	file, err := img.CreateImageFile("http://localhost:9057/api/v1/file/image/new")
+	if err != nil {
+		t.Errorf("Error while creating ImageFile: %s", err.Error())
+	} else {
+		t.Logf("ImageFile created successfully: ID => %s", file.Id)
+	}
+}

@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -155,52 +155,48 @@ func (i *Image) Save() *ImageSaveError {
 	return nil
 }
 
-func (i *Image) PostToApi(endpoint string) {
+func (i *Image) CreateImageFile(endpoint string) (ImageFile, error) {
 	file, openErr := os.ReadFile(i.ImageUrl)
 	if openErr != nil {
-		log.Println(openErr.Error())
+		return ImageFile{}, openErr
 	}
 	bodyBuff := new(bytes.Buffer)
 	writer := multipart.NewWriter(bodyBuff)
 	partFile, partFileErr := writer.CreateFormFile("file", i.Id)
 	if partFileErr != nil {
-		log.Println("Part error")
+		return ImageFile{}, partFileErr
 	}
 	_, partErr := partFile.Write(file)
 	if partErr != nil {
-		log.Println(partErr.Error())
+		return ImageFile{}, partErr
 	}
 	writerCloseErr := writer.Close()
 	if writerCloseErr != nil {
-		log.Println(writerCloseErr)
+		return ImageFile{}, writerCloseErr
 	}
 
 	request, reqError := http.NewRequest("POST", endpoint, bodyBuff)
 	if reqError != nil {
-		log.Println(reqError.Error())
+		return ImageFile{}, reqError
 	}
 	request.Header.Add("Content-Type", writer.FormDataContentType())
 
 	client := &http.Client{}
 	res, resErr := client.Do(request)
 	if resErr != nil {
-		log.Println(resErr)
+		return ImageFile{}, resErr
 	}
 	defer res.Body.Close()
 
-	var resData map[string]interface{}
-	json.NewDecoder(res.Body).Decode(&resData)
-	log.Println(resData)
-
-	//  imageFileValues := url.Values{
-	//    "file": {i.ImageUrl},
-	//  }
-	//  res, httpErr := http.PostForm(endpoint, imageFileValues)
-	//  if httpErr != nil {
-	//    log.Println(httpErr.Error())
-	//  }
-	//  defer res.Body.Close()
-	// var resData map[string]interface{}
-	// json.NewDecoder(res.Body).Decode(&resData)
-	// log.Println(resData)
+	switch res.StatusCode {
+	case http.StatusCreated:
+		var resData HttpResponse[ImageFile]
+		err := json.NewDecoder(res.Body).Decode(&resData)
+		if err != nil {
+			return ImageFile{}, err
+		}
+		return resData.Data, nil
+	default:
+		return ImageFile{}, errors.New("unhandled HTTP Status Code:  " + strconv.Itoa(res.StatusCode))
+	}
 }
