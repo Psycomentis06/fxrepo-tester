@@ -22,25 +22,6 @@ const (
 	COLUMN_NAME_IMAGE_URL         = "image_url"
 )
 
-type Image struct {
-	Id          string   `json:"id"`
-	Title       string   `json:"title"`
-	ImageUrl    string   `json:"image_url"`
-	Description string   `json:"description"`
-	Category    []string `json:"category"`
-	Tags        []string `json:"tags"`
-}
-
-type ImageSaveError struct {
-	Message     string `json:"message"`
-	OriginalErr error  `json:"error"`
-	StatusCode  int    `json:"status_code"`
-}
-
-func (e *ImageSaveError) Error() string {
-	return e.Message
-}
-
 func ParseImageCsvFile(path string, nrows int) (image []Image, err error) {
 	file, fileOpenErr := os.Open(path)
 	if fileOpenErr != nil {
