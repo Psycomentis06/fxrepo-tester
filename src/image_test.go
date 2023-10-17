@@ -49,10 +49,10 @@ func TestImage_SaveToService(t *testing.T) {
 	}
 	client := &http.Client{}
 	endpoints := &Endpoints{
-		CreateImageFileEndpoint: "http://localhost:9057/v1/api/file/image/new",
-		CreateImagePostEndpoint: "http://localhost:9057/v1/api/post/image/new",
-		CreateCategoryEndpoint:  "http://localhost:9057/v1/api/category/new",
-		GetCategoryEndpoint:     "http://localhost:9057/v1/api/category/",
+		CreateImageFileEndpoint: "http://localhost:9057/api/v1/file/image/new",
+		CreateImagePostEndpoint: "http://localhost:9057/api/v1/post/image/new",
+		CreateCategoryEndpoint:  "http://localhost:9057/api/v1/category/new",
+		GetCategoryEndpoint:     "http://localhost:9057/api/v1/category/",
 	}
 	imagePost, err := img.SaveToService(client, endpoints)
 	if err != nil {

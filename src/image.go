@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -173,7 +174,16 @@ func CreateImagePost(c *http.Client, endpoint string, bodyData ImagePostCreateMo
 		return ImagePost{}, resErr
 	}
 	defer res.Body.Close()
-	if status := res.StatusCode; status != http.StatusCreated {
+	status := res.StatusCode
+	if status == http.StatusInternalServerError {
+		var springErr SpringBootResponseError
+		err := json.NewDecoder(res.Body).Decode(&springErr)
+		if err != nil {
+			return ImagePost{}, err
+		}
+		return ImagePost{}, errors.New(springErr.Error)
+	}
+	if status != http.StatusCreated {
 		var resErr HttpResponseError
 		err := json.NewDecoder(res.Body).Decode(&resErr)
 		if err != nil {
@@ -230,6 +240,8 @@ func (i *Image) CreateImageFile(c *http.Client, endpoint string) (ImageFile, err
 		}
 		return resData.Data, nil
 	default:
+		b, _ := io.ReadAll(res.Body)
+		log.Println(string(b))
 		return ImageFile{}, errors.New("unhandled HTTP Status Code:  " + strconv.Itoa(res.StatusCode))
 	}
 }
@@ -240,22 +252,21 @@ func (i *Image) SaveToService(c *http.Client, endpoints *Endpoints) (ImagePost, 
 		categoryEndpoint := endpoints.GetCategoryEndpoint + cat
 		_, err := GetCategory(c, categoryEndpoint)
 		if err != nil {
+			log.Println("Category " + cat + " does not exist, creating...")
 			categoryObj := Category{Name: cat, Description: ""}
 			_, err := CreateCategory(c, endpoints.CreateCategoryEndpoint, categoryObj)
 			if err != nil {
+				log.Println("Error creating category: " + err.Error())
 			}
 		}
 	}
 	// Create ImageFile
 	imageFile, err := i.CreateImageFile(c, endpoints.CreateImageFileEndpoint)
 	if err != nil {
+		log.Println("Error creating image file: " + err.Error())
 		return ImagePost{}, err
 	}
-	// Create ImagePost
-	tags := make([]Tag, len(i.Tags))
-	for _, tag := range i.Tags {
-		tags = append(tags, Tag{Name: tag})
-	}
+
 	if len(i.Title) == 0 {
 		if len(i.Description) == 0 {
 			i.Title = "Untitled"
@@ -281,12 +292,13 @@ func (i *Image) SaveToService(c *http.Client, endpoints *Endpoints) (ImagePost, 
 		Content:  i.Description,
 		Public:   true,
 		Nsfw:     false,
-		Tags:     tags,
+		Tags:     i.Tags,
 		Image:    imageFile.Id,
 		Category: categoryName,
 	}
 	post, err := CreateImagePost(c, endpoints.CreateImagePostEndpoint, imagePost)
 	if err != nil {
+		log.Println("Error creating image post: " + err.Error())
 		return ImagePost{}, err
 	}
 	return post, nil

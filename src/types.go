@@ -18,6 +18,14 @@ type HttpResponseError struct {
 	Status    string
 	Timestamp string
 }
+
+type SpringBootResponseError struct {
+	Message string `json:"message"`
+	Path    string `json:"path"`
+	Status  int    `json:"status"`
+	Error   string `json:"error"`
+}
+
 type Category struct {
 	Id          int    `json:"id"`
 	Name        string `json:"name"`
@@ -67,8 +75,8 @@ type ImagePost struct {
 	CreatedAt   string    `json:"createdAt"`
 	UpdatedAt   string    `json:"updatedAt"`
 	UserId      string    `json:"userId"`
-	Public      string    `json:"publik"`
-	Ready       string    `json:"ready"`
+	Public      bool      `json:"publik"`
+	Ready       bool      `json:"ready"`
 	Nsfw        bool      `json:"nsfw"`
 	Thumbnail   string    `json:"thumbnail"`
 	Image       ImageFile `json:"image"`
@@ -77,13 +85,13 @@ type ImagePost struct {
 }
 
 type ImagePostCreateModel struct {
-	Title    string `json:"title"`
-	Content  string `json:"content"`
-	Public   bool   `json:"public"`
-	Nsfw     bool   `json:"nsfw"`
-	Tags     []Tag  `json:"tags"`
-	Image    string `json:"image"`
-	Category string `json:"category"`
+	Title    string   `json:"title"`
+	Content  string   `json:"content"`
+	Public   bool     `json:"public"`
+	Nsfw     bool     `json:"nsfw"`
+	Tags     []string `json:"tags"`
+	Image    string   `json:"image"`
+	Category string   `json:"category"`
 }
 type ImageSaveError struct {
 	Message     string `json:"message"`
