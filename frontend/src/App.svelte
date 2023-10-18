@@ -36,7 +36,8 @@
         EventsOn("save-images-end", () => {
             saveImagesIndicator.set(false)
         })
-        EventsOn("image-saved", (d: {image: any, totalImages: number, savedImages: number}) => {
+        EventsOn("image-saved", (d: { image: any, totalImages: number, savedImages: number }) => {
+            console.log(d)
             saveImagesStatusText = `Saved ${d.image.id} (${d.savedImages}/${d.totalImages})`
             console.log(d.image)
         })

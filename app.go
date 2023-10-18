@@ -93,9 +93,9 @@ func (a *App) SubmitImages(mainServerHost string) {
 				savedImagesMutex.Unlock()
 				imageSave := make(map[string]interface{}, 3)
 				imageSave["image"] = savedImagePost
-				imageSave["savedCounter"] = savedImagesCounter
+				imageSave["savedImages"] = savedImagesCounter
 				imageSave["totalImages"] = numImages
-				runtime.EventsEmit(a.ctx, "image-saved", savedImagePost)
+				runtime.EventsEmit(a.ctx, "image-saved", imageSave)
 				ch <- savedImagePost
 			}
 		}()
