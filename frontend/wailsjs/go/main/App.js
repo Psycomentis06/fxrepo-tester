@@ -13,3 +13,11 @@ export function LoadFileAsync(arg1) {
 export function OpenImage(arg1) {
   return window['go']['main']['App']['OpenImage'](arg1);
 }
+
+export function PingServer(arg1) {
+  return window['go']['main']['App']['PingServer'](arg1);
+}
+
+export function SubmitImages(arg1) {
+  return window['go']['main']['App']['SubmitImages'](arg1);
+}

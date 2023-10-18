@@ -4,6 +4,7 @@ import (
 	"context"
 	"fxrepo_tester/src"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"sync"
@@ -11,8 +12,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-var cachedImagesCounter int
-var cachedImagesMutex sync.Mutex
+var cachedImagesCounter, savedImagesCounter int
+var cachedImagesMutex, savedImagesMutex sync.Mutex
 
 // App struct
 type App struct {
@@ -42,11 +43,77 @@ func (a *App) startup(ctx context.Context) {
 	initAppDir()
 }
 
+var images *[]src.Image
+
 func (a *App) LoadFile(nrows int) (img []src.Image, err error) {
 	path, _ := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{})
 	imgs, lErr := src.ParseImageCsvFile(path, nrows)
 	a.cacheImages(&imgs)
+	images = &imgs
 	return imgs, lErr
+}
+
+func (a *App) SubmitImages(mainServerHost string) {
+	if images == nil {
+		log.Println("Can't submit images, images pointer is nil")
+		return
+	}
+	runtime.EventsEmit(a.ctx, "save-images-start")
+	imgs := *images
+	var wgMain, wgWorker sync.WaitGroup
+	ch := make(chan src.ImagePost, len(imgs))
+	const chunkSize = 10
+	numImages := len(imgs)
+	chunksArraySize := (numImages / chunkSize) + 1
+	for i := 0; i < chunksArraySize; i++ {
+		start := i * chunkSize
+		end := (i + 1) * chunkSize
+		if end > numImages {
+			end = numImages
+		}
+		imgsSlice := (imgs)[start:end]
+		wgWorker.Add(1)
+		go func() {
+			defer wgWorker.Done()
+			client := &http.Client{}
+			endpoints := &src.Endpoints{
+				CreateImageFileEndpoint: mainServerHost + "/api/v1/file/image/new",
+				CreateImagePostEndpoint: mainServerHost + "/api/v1/post/image/new",
+				CreateCategoryEndpoint:  mainServerHost + "/api/v1/category/new",
+				GetCategoryEndpoint:     mainServerHost + "/api/v1/category/",
+			}
+			for _, img := range imgsSlice {
+				savedImagePost, saveErr := img.SaveToService(client, endpoints)
+				if saveErr != nil {
+					log.Println(saveErr)
+					return
+				}
+				savedImagesMutex.Lock()
+				savedImagesCounter++
+				savedImagesMutex.Unlock()
+				imageSave := make(map[string]interface{}, 3)
+				imageSave["image"] = savedImagePost
+				imageSave["savedCounter"] = savedImagesCounter
+				imageSave["totalImages"] = numImages
+				runtime.EventsEmit(a.ctx, "image-saved", savedImagePost)
+				ch <- savedImagePost
+			}
+		}()
+	}
+
+	go func() {
+		wgWorker.Wait()
+		close(ch)
+	}()
+
+	wgMain.Add(1)
+	go func() {
+		defer wgMain.Done()
+		for range ch {
+		}
+	}()
+	wgMain.Wait()
+	runtime.EventsEmit(a.ctx, "save-images-end")
 }
 
 // func (a *App) cacheFileMetadata(path) {
@@ -95,10 +162,8 @@ func (a *App) cacheImages(imgs *[]src.Image) {
 
 func (a *App) cacheImage(imgs *[]src.Image, ch chan src.Image, totalImages int) {
 	for index, v := range *imgs {
-		cachedImagesMutex.Lock()
-		cachedImagesCounter++
-		cachedImagesMutex.Unlock()
-		eventData := make(map[string]interface{}, 2)
+
+		eventData := make(map[string]interface{}, 3)
 		eventData["cachedImages"] = cachedImagesCounter
 		eventData["image"] = v
 		eventData["totalImages"] = totalImages
@@ -120,8 +185,11 @@ func (a *App) cacheImage(imgs *[]src.Image, ch chan src.Image, totalImages int) 
 		} else {
 			(*imgs)[index].ImageUrl = src.GetImageCacheDir() + "/" + v.Id
 			log.Println("Cached image: ", v.Id)
+			cachedImagesMutex.Lock()
+			cachedImagesCounter++
+			cachedImagesMutex.Unlock()
+			ch <- v
 		}
-		ch <- v
 	}
 }
 
@@ -140,4 +208,12 @@ func (a *App) OpenImage(path string) {
 	if cmdErr != nil {
 		log.Println("Failed to open image.")
 	}
+}
+
+func (a *App) PingServer(host string) bool {
+	_, err := http.Get(host)
+	if err != nil {
+		return false
+	}
+	return true
 }

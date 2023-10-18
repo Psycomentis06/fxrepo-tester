@@ -61,7 +61,7 @@
     <h1 class="text-2xl">
       Not data loaded yet
     </h1>
-  </div>  
+  </div>
 {:else}
   <!-- Table -->
   <div class="px-4 py-2">
@@ -74,8 +74,8 @@
             <th>Title</th>
             <th>Description</th>
             <th>Photo URL</th>
-            <th>Tags(Number)</th>
-            <th>Categories(Number)</th>
+            <th>Tags</th>
+            <th>Categories</th>
           </tr>
         </thead>
         <tbody>
@@ -89,7 +89,7 @@
                   {i.image_url}
                 </button>
               </td>
-              <td>{i.tags[0]}</td>
+              <td>{i.tags.join(',')}</td>
               <td>{i.category[0]}</td>
             </tr>
           {/each}

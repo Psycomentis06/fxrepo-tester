@@ -1,9 +1,10 @@
 <script lang="ts">
     import Header from './lib/components/Header.svelte'
     import Settings from "./lib/settings/Settings.svelte";
-    import {cacheLoading, loadingFileIndicator} from './lib/stores/indicators'
+    import {cacheLoading, loadingFileIndicator, saveImagesIndicator} from './lib/stores/indicators'
     import {onMount} from 'svelte';
-    import type {Image} from '../wailsjs/go/models'
+    import type {src} from '../wailsjs/go/models'
+    import {EventsOn} from '../wailsjs/runtime'
     import autoAnimate from '@formkit/auto-animate'
     import {fade} from 'svelte/transition'
     import Images from './lib/home/Images.svelte';
@@ -15,18 +16,32 @@
 
 
     let cacheStatusText = ""
+    let saveImagesStatusText = ""
     onMount(() => {
-        window.runtime.EventsOn("cache-start", () => {
+        EventsOn("cache-start", () => {
             cacheLoading.set(true)
         })
 
-        window.runtime.EventsOn("cache-end", () => {
+        EventsOn("cache-end", () => {
             cacheLoading.set(false)
         })
-        window.runtime.EventsOn("cache-event", (d: { image: Image, totalImages: number, cachedImages: number }) => {
+        EventsOn("cache-event", (d: { image: src.Image, totalImages: number, cachedImages: number }) => {
             cacheStatusText = `Caching Image ${d.image.id}. (${d.cachedImages}/${d.totalImages})`
         })
+
+        EventsOn("save-images-start", () => {
+            saveImagesIndicator.set(true)
+        })
+
+        EventsOn("save-images-end", () => {
+            saveImagesIndicator.set(false)
+        })
+        EventsOn("image-saved", (d: {image: any, totalImages: number, savedImages: number}) => {
+            saveImagesStatusText = `Saved ${d.image.id} (${d.savedImages}/${d.totalImages})`
+            console.log(d.image)
+        })
     })
+
 
 </script>
 
@@ -39,6 +54,17 @@
             </h1>
             <p class="my-5">
                 {cacheStatusText}
+            </p>
+        </div>
+    </div>
+{:else if $saveImagesIndicator}
+    <div class="w-full h-screen" use:autoAnimate>
+        <div class="flex flex-col p-10 text-center w-full h-full items-center justify-center">
+            <h1 class="text-2xl">
+                Saving Images...
+            </h1>
+            <p class="my-5">
+                {saveImagesStatusText}
             </p>
         </div>
     </div>

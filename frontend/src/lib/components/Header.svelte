@@ -1,7 +1,7 @@
 <script lang="ts">
   import {showSettingsModal,pageLinesLimit} from '../stores/settings'
   import {imagesArrayData} from '../stores/images'
-  import { LoadFile, LoadFileAsync } from '../../../wailsjs/go/main/App'
+  import { LoadFile, SubmitImages } from '../../../wailsjs/go/main/App'
   import { loadingFileIndicator } from '../stores/indicators'
   const toggleTheme = () => {
     const dataTheme = document.documentElement.getAttribute('data-theme').replaceAll(' ', '');
@@ -26,23 +26,17 @@
     .finally(() => {
         loadingFileIndicator.set(false)
       })
-    // LoadFileAsync()
-    // window.runtime.EventsOnce('load-file-end', r => {
-    //   if (r.Err !== null) {
-    //     if (r.Err.Op !== 'open') {
-    //       alert(`Error while opening file.`)
-    //     }
-    //   } else if (r.Images !== null) {
-    //     // imagesArrayData.set(r.Images)
-    //     console.log(r.Images)
-    //   }
-    // })
+  }
+  const saveImages = () => {
+    const mainServerHost = localStorage.getItem("settings:endpoints:main")
+    if (mainServerHost) SubmitImages(mainServerHost)
+    else alert("Main Service host is not set. Go to settings and set it")
   }
 </script>
 <div class="navbar">
   <div class="navbar-start">
     {#if $imagesArrayData.length > 0}
-      <button class="btn btn-primary">Batch send ({$pageLinesLimit})</button>
+      <button class="btn btn-primary" on:click={saveImages}>Save Images({$pageLinesLimit})</button>
     {/if}
   </div>
   <div class="navbar-center">

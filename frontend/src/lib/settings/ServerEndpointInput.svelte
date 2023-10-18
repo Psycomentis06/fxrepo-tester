@@ -1,4 +1,5 @@
 <script lang="ts">
+  import {PingServer} from '../../../wailsjs/go/main/App'
   export let name = 'name'
   export let endpointInput = ''
   let loading = false
@@ -8,16 +9,15 @@
   const pingServer = async () => {
     if (endpointInput.length == 0 || endpointInput === null || endpointInput === undefined) return;
     loading = true;
-    try {
-       await fetch(endpointInput)
+    let pingRes = await PingServer(endpointInput)
+    if (pingRes) {
       pingFeedback = 'input-solid-success'
       pingSuccess = 1
-    } catch(err) {
+    } else {
       pingFeedback = 'input-solid-error'
       pingSuccess = 0
-    } finally {
-      loading = false
     }
+    loading = false
   }
 </script>
 <div class="w-full">
@@ -38,11 +38,11 @@
       {/if}
     </span>
   </div>
-  {#if pingSuccess == 1}
+  {#if pingSuccess === 1}
     <div class="form-label">
       <span class="form-label-alt text-success">Success</span>
     </div>
-    {:else if pingSuccess == 0}
+    {:else if pingSuccess === 0}
     <div class="form-label">
       <span class="form-label-alt text-error">Error</span>
     </div>
