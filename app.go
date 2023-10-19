@@ -207,9 +207,21 @@ func (a *App) cacheWorker(ch chan *src.Image, goroutineIndex int, totalImages in
 		select {
 		case image := <-ch:
 			log.Printf("===================== Start goroutine N: %d ===================== \n", goroutineIndex)
-			saveErr := image.Save()
-			if saveErr != nil {
-				log.Println("Failed to save image", saveErr)
+			imgSaveErr := image.Save()
+			if imgSaveErr != nil {
+				if imgSaveErr.StatusCode == 429 {
+					log.Println("Rate limit exceeded")
+					return
+				}
+				if imgSaveErr.OriginalErr != nil {
+					filePath := src.GetAppDirPath() + "/" + image.Id
+					rmFileErr := os.Remove(filePath)
+					if rmFileErr == nil {
+						log.Println("Remove corrupted image: ", image.Id)
+					}
+					log.Println("Failed to save image", imgSaveErr)
+					return
+				}
 			} else {
 				log.Printf("Image %s saved successfully\n", image.Id)
 				cachedImagesMutex.Lock()
