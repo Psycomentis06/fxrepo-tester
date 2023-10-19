@@ -11,3 +11,5 @@ export function OpenImage(arg1:string):Promise<void>;
 export function PingServer(arg1:string):Promise<boolean>;
 
 export function SubmitImages(arg1:string):Promise<void>;
+
+export function SubmitImagesV2(arg1:string):Promise<void>;

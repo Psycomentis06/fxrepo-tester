@@ -1,7 +1,7 @@
 <script lang="ts">
   import {showSettingsModal,pageLinesLimit} from '../stores/settings'
   import {imagesArrayData} from '../stores/images'
-  import { LoadFile, SubmitImages } from '../../../wailsjs/go/main/App'
+  import { LoadFile, SubmitImages, SubmitImagesV2 } from '../../../wailsjs/go/main/App'
   import { loadingFileIndicator } from '../stores/indicators'
   const toggleTheme = () => {
     const dataTheme = document.documentElement.getAttribute('data-theme').replaceAll(' ', '');
@@ -29,7 +29,7 @@
   }
   const saveImages = () => {
     const mainServerHost = localStorage.getItem("settings:endpoints:main")
-    if (mainServerHost) SubmitImages(mainServerHost)
+    if (mainServerHost) SubmitImagesV2(mainServerHost)
     else alert("Main Service host is not set. Go to settings and set it")
   }
 </script>

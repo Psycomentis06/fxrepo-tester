@@ -21,3 +21,7 @@ export function PingServer(arg1) {
 export function SubmitImages(arg1) {
   return window['go']['main']['App']['SubmitImages'](arg1);
 }
+
+export function SubmitImagesV2(arg1) {
+  return window['go']['main']['App']['SubmitImagesV2'](arg1);
+}

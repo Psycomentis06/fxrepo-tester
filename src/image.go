@@ -121,7 +121,7 @@ func (i *Image) Save() *ImageSaveError {
 	resp, err := http.Get(i.ImageUrl)
 	if err != nil {
 		return &ImageSaveError{
-			Message:     "HTTP Error",
+			Message:     "HTTP Error: " + err.Error(),
 			OriginalErr: err,
 			StatusCode:  -1,
 		}

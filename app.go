@@ -48,9 +48,67 @@ var images *[]src.Image
 func (a *App) LoadFile(nrows int) (img []src.Image, err error) {
 	path, _ := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{})
 	imgs, lErr := src.ParseImageCsvFile(path, nrows)
-	a.cacheImages(&imgs)
+	//a.cacheImages(&imgs)
+	a.cacheImagesV2(&imgs)
 	images = &imgs
 	return imgs, lErr
+}
+
+var saveImagesWg sync.WaitGroup
+
+func (a *App) SubmitImagesV2(mainServerHost string) {
+	if images == nil {
+		log.Println("Can't submit images, images pointer is nil")
+		return
+	}
+	queue := make(chan *src.Image)
+	runtime.EventsEmit(a.ctx, "save-images-start")
+	for i := 0; i < 10; i++ {
+		go a.saveImageWorker(queue, mainServerHost, i, len(*images))
+	}
+
+	for i := 0; i < len(*images); i++ {
+		saveImagesWg.Add(1)
+		a.saveImageEnqueue(&(*images)[i], queue)
+	}
+	saveImagesWg.Wait()
+	log.Printf("Finished saving %d images", len(*images))
+	runtime.EventsEmit(a.ctx, "save-images-end")
+}
+
+func (a *App) saveImageWorker(ch chan *src.Image, mainServerHost string, goroutineIndex int, totalImages int) {
+	for {
+		select {
+		case image := <-ch:
+			client := &http.Client{}
+			endpoints := &src.Endpoints{
+				CreateImageFileEndpoint: mainServerHost + "/api/v1/file/image/new",
+				CreateImagePostEndpoint: mainServerHost + "/api/v1/post/image/new",
+				CreateCategoryEndpoint:  mainServerHost + "/api/v1/category/new",
+				GetCategoryEndpoint:     mainServerHost + "/api/v1/category/",
+			}
+			imagePost, saveError := image.SaveToService(client, endpoints)
+			if saveError != nil {
+				log.Println("Save image to server failed: ", saveError)
+			} else {
+				savedImagesMutex.Lock()
+				savedImagesCounter++
+				savedImagesMutex.Unlock()
+				imageSave := make(map[string]interface{}, 3)
+				imageSave["image"] = imagePost
+				imageSave["savedImages"] = savedImagesCounter
+				imageSave["totalImages"] = totalImages
+				saveImagesWg.Done()
+				runtime.EventsEmit(a.ctx, "image-saved", imageSave)
+			}
+		}
+	}
+}
+
+func (a *App) saveImageEnqueue(img *src.Image, queue chan *src.Image) {
+	go func() {
+		queue <- img
+	}()
 }
 
 func (a *App) SubmitImages(mainServerHost string) {
@@ -119,6 +177,56 @@ func (a *App) SubmitImages(mainServerHost string) {
 // func (a *App) cacheFileMetadata(path) {
 //
 // }
+
+var cacheImageWg sync.WaitGroup
+
+func (a *App) cacheImagesV2(imgs *[]src.Image) {
+	queue := make(chan *src.Image)
+	runtime.EventsEmit(a.ctx, "cache-start")
+	for i := 0; i < 10; i++ {
+		go a.cacheWorker(queue, i, len(*imgs))
+	}
+
+	for i := 0; i < len(*imgs); i++ {
+		cacheImageWg.Add(1)
+		cacheEnqueue(&(*imgs)[i], queue)
+	}
+	cacheImageWg.Wait()
+	log.Printf("Finished caching %d images\n", len(*imgs))
+	runtime.EventsEmit(a.ctx, "cache-end")
+}
+
+func cacheEnqueue(img *src.Image, queue chan *src.Image) {
+	go func() {
+		queue <- img
+	}()
+}
+
+func (a *App) cacheWorker(ch chan *src.Image, goroutineIndex int, totalImages int) {
+	for {
+		select {
+		case image := <-ch:
+			log.Printf("===================== Start goroutine N: %d ===================== \n", goroutineIndex)
+			saveErr := image.Save()
+			if saveErr != nil {
+				log.Println("Failed to save image", saveErr)
+			} else {
+				log.Printf("Image %s saved successfully\n", image.Id)
+				cachedImagesMutex.Lock()
+				cachedImagesCounter++
+				cachedImagesMutex.Unlock()
+				eventData := make(map[string]interface{}, 3)
+				eventData["cachedImages"] = cachedImagesCounter
+				eventData["image"] = image
+				eventData["totalImages"] = totalImages
+				image.ImageUrl = src.GetImageCacheDir() + "/" + image.Id
+				runtime.EventsEmit(a.ctx, "cache-event", eventData)
+			}
+			log.Printf("===================== End goroutine N: %d ===================== \n\r", goroutineIndex)
+			cacheImageWg.Done()
+		}
+	}
+}
 
 func (a *App) cacheImages(imgs *[]src.Image) {
 	runtime.EventsEmit(a.ctx, "cache-start")
